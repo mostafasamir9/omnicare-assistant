@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OmniCare Assistant</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: #f4f6f8;
+    height: 100vh;
+    display: flex; justify-content: center; padding: 20px;
+  }
+  .app {
+    width: 100%; max-width: 820px;
+    background: white; border-radius: 14px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  header {
+    background: linear-gradient(135deg, #1e3a8a, #2563eb);
+    color: white; padding: 18px 24px;
+  }
+  header h1 { font-size: 18px; font-weight: 600; }
+  header p  { font-size: 12px; opacity: 0.85; margin-top: 2px; }
+  #messages {
+    flex: 1; overflow-y: auto; padding: 20px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .msg { padding: 12px 16px; border-radius: 12px; max-width: 85%; white-space: pre-wrap; line-height: 1.5; }
+  .msg.user { align-self: flex-end; background: #1e3a8a; color: white; }
+  .msg.bot  { align-self: flex-start; background: #eef2f7; color: #111; }
+  .msg.bot code { background: #dbeafe; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+  .citations { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    background: #dbeafe; color: #1e40af;
+    padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: 500;
+  }
+  .tools {
+    margin-top: 8px; font-size: 11px; color: #6b7280;
+    font-family: ui-monospace, monospace;
+  }
+  .pending {
+    margin-top: 10px; padding: 12px 14px;
+    border: 1px solid #93c5fd; background: #eff6ff; border-radius: 10px;
+  }
+  .pending strong { font-size: 13px; color: #1e40af; }
+  .pending button {
+    margin-top: 10px; padding: 8px 16px; border: none; border-radius: 8px;
+    cursor: pointer; font-size: 13px; font-weight: 600; margin-right: 8px;
+  }
+  .confirm { background: #16a34a; color: white; }
+  .confirm:hover { background: #15803d; }
+  .cancel  { background: #dc2626; color: white; }
+  .cancel:hover { background: #b91c1c; }
+  footer {
+    padding: 14px 20px; border-top: 1px solid #e5e7eb;
+    display: flex; gap: 10px; background: #fafbfc;
+  }
+  #input {
+    flex: 1; padding: 12px 16px; border: 1px solid #d1d5db;
+    border-radius: 10px; font-size: 14px; outline: none;
+    transition: border 0.15s;
+  }
+  #input:focus { border-color: #2563eb; }
+  #send {
+    padding: 12px 24px; background: #1e3a8a; color: white;
+    border: none; border-radius: 10px; cursor: pointer;
+    font-weight: 600; font-size: 14px;
+  }
+  #send:hover:not(:disabled) { background: #1e40af; }
+  #send:disabled { opacity: 0.5; cursor: not-allowed; }
+  .typing { display: inline-block; color: #6b7280; font-size: 13px; padding: 8px 0; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>🛡️ OmniCare Assistant</h1>
+    <p>Ask about coverage, check a claim, or file a new one</p>
+  </header>
+  <div id="messages"></div>
+  <footer>
+    <input id="input" placeholder="Type your message…" autocomplete="off" />
+    <button id="send">Send</button>
+  </footer>
+</div>
+
+<script>
+const API = "http://localhost:8000";
+const sessionId = "web-" + Math.random().toString(36).slice(2, 10);
+const userId = "user-1";
+const messagesEl = document.getElementById("messages");
+const inputEl = document.getElementById("input");
+const sendBtn = document.getElementById("send");
+
+function addMessage(content, cls, opts = {}) {
+  const div = document.createElement("div");
+  div.className = "msg " + cls;
+  div.textContent = content;
+  messagesEl.appendChild(div);
+
+  if (opts.citations && opts.citations.length) {
+    const c = document.createElement("div");
+    c.className = "citations";
+    c.innerHTML = opts.citations.map(cit =>
+      `<span class="chip">${cit.doc_id} §${cit.section} (p.${cit.page})</span>`
+    ).join("");
+    messagesEl.appendChild(c);
+  }
+
+  if (opts.toolCalls && opts.toolCalls.length) {
+    const t = document.createElement("div");
+    t.className = "tools";
+    t.textContent = "🔧 " + opts.toolCalls.map(tc => tc.name).join(", ");
+    messagesEl.appendChild(t);
+  }
+
+  if (opts.pendingAction) {
+    const p = document.createElement("div");
+    p.className = "pending";
+    p.innerHTML = `
+      <strong>Confirm claim submission?</strong>
+      <div>
+        <button class="confirm" data-id="${opts.pendingAction.action_id}" data-confirm="true">✅ Confirm</button>
+        <button class="cancel" data-id="${opts.pendingAction.action_id}" data-confirm="false">❌ Cancel</button>
+      </div>`;
+    messagesEl.appendChild(p);
+  }
+
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  return div;
+}
+
+messagesEl.addEventListener("click", async (e) => {
+  const btn = e.target.closest("button[data-id]");
+  if (!btn) return;
+  const actionId = btn.dataset.id;
+  const confirm = btn.dataset.confirm === "true";
+  btn.parentElement.parentElement.innerHTML = "<em>Processing…</em>";
+  try {
+    const r = await fetch(API + "/api/confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session_id: sessionId, user_id: userId,
+        action_id: actionId, confirm,
+      }),
+    });
+    const data = await r.json();
+    addMessage(data.reply, "bot", { toolCalls: data.tool_calls });
+  } catch (err) {
+    addMessage("⚠ Error: " + err.message, "bot");
+  }
+});
+
+async function sendMessage() {
+  const text = inputEl.value.trim();
+  if (!text) return;
+  inputEl.value = "";
+  sendBtn.disabled = true;
+
+  addMessage(text, "user");
+  const typing = addMessage("…", "bot");
+  typing.className = "typing";
+
+  try {
+    const r = await fetch(API + "/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId, user_id: userId, message: text }),
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    typing.remove();
+    addMessage(data.reply, "bot", {
+      citations: data.citations,
+      toolCalls: data.tool_calls,
+      pendingAction: data.pending_action,
+    });
+  } catch (err) {
+    typing.remove();
+    addMessage("⚠ Error: " + err.message, "bot");
+  } finally {
+    sendBtn.disabled = false;
+    inputEl.focus();
+  }
+}
+
+sendBtn.addEventListener("click", sendMessage);
+inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter") sendMessage(); });
+
+addMessage("Hi! I'm the OmniCare assistant. Ask about coverage, check a claim status, or file a new claim.", "bot");
+inputEl.focus();
+</script>
+</body>
+</html>

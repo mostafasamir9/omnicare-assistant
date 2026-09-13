@@ -1,0 +1,25 @@
+[project]
+name = "omnicare-assistant"
+version = "0.1.0"
+description = "OmniCare Financial GenAI customer assistant"
+requires-python = ">=3.11"
+dependencies = [
+    "google-genai>=0.3.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.6",
+    "pydantic>=2.9.2",
+    "pydantic-settings>=2.5.2",
+    "numpy>=1.26.4",
+    "rank-bm25>=0.2.2",
+    "python-dotenv>=1.0.1",
+    "tenacity>=9.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.6.0",
+]
+
+[tool.uv]
+package = false
