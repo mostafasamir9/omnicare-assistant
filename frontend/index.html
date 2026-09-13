@@ -86,11 +86,10 @@
     <button id="send">Send</button>
   </footer>
 </div>
-
 <script>
-const API = "http://localhost:8000";
-const sessionId = "web-" + Math.random().toString(36).slice(2, 10);
-const userId = "user-1";
+  const API = window.OMNICARE_API_URL || "http://localhost:8000";
+  const sessionId = "web-" + Math.random().toString(36).slice(2, 10);
+  const userId = "user-1";
 const messagesEl = document.getElementById("messages");
 const inputEl = document.getElementById("input");
 const sendBtn = document.getElementById("send");

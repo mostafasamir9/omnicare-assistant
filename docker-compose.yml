@@ -1,0 +1,38 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: omnicare-backend:latest
+    container_name: omnicare-backend
+    env_file:
+      - .env
+    environment:
+      POLICY_DIR: /app/backend/data/policies
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    image: omnicare-frontend:latest
+    container_name: omnicare-frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      # Injected into nginx at container start and served via /config.js.
+      # `backend` resolves via Docker's internal DNS to the backend container.
+      # The browser will hit localhost:8000 (host port mapping), not backend:8000.
+      OMNICARE_API_URL: http://localhost:8000
+    ports:
+      - "8080:80"
+    restart: unless-stopped

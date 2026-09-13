@@ -120,7 +120,7 @@ def _history_to_contents(session_id: str) -> list[types.Content]:
         contents.append(
             types.Content(
                 role=role,
-                parts=[types.Part.from_text(turn["content"])],
+                parts=[types.Part.from_text(text=turn["content"])],
             )
         )
     return contents
@@ -214,7 +214,6 @@ def handle_chat(session_id: str, user_id: str, message: str) -> ChatResponse:
     # 5. Build contents for Gemini
     contents = _history_to_contents(session_id)
 
-    # Inject policy context as a hidden user turn (before the last user msg)
     if context_block:
         contents.insert(
             max(0, len(contents) - 1),
@@ -222,7 +221,7 @@ def handle_chat(session_id: str, user_id: str, message: str) -> ChatResponse:
                 role="user",
                 parts=[
                     types.Part.from_text(
-                        f"<policy_context>\n{context_block}\n</policy_context>"
+                        text=f"<policy_context>\n{context_block}\n</policy_context>"
                     )
                 ],
             ),
@@ -242,7 +241,6 @@ def handle_chat(session_id: str, user_id: str, message: str) -> ChatResponse:
 
     # 7. Handle function calls
     if function_calls:
-        # Append the model's tool-call turn first
         model_content = response.candidates[0].content
         contents.append(model_content)
 
@@ -251,7 +249,10 @@ def handle_chat(session_id: str, user_id: str, message: str) -> ChatResponse:
             try:
                 args = dict(fc.args) if fc.args else {}
             except Exception:
-                args = {}
+                try:
+                    args = json.loads(type(fc.args).to_json(fc.args)) if fc.args else {}
+                except Exception:
+                    args = {}
 
             if name == "get_claim_status":
                 if not session_store.add_tool_call(session_id):
